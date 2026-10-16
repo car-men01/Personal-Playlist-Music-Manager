@@ -11,3 +11,4 @@ class Track(Base):
     genre = Column(String, index=True)
     bpm = Column(Integer)
     energy = Column(Float)
+    release_year = Column(Integer)

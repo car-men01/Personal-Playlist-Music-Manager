@@ -1,20 +1,33 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Literal
 
 from core.database import get_db
 from schemas.track import TrackResponse, TrackCreate, TrackUpdate
 from services.track_service import TrackService
 from schemas.playlist import PlaylistResponse, PlaylistCreate, PlaylistUpdate
 from services.playlist_service import PlaylistService
+from schemas.search import AutocompleteResponse
+from services.search_service import SearchService
+from schemas.browse import TrackFilters, TrackSort
+from services.sorting_algorithms import ALGORITHM_NAMES
 
 router = APIRouter()
 track_service = TrackService()
 playlist_service = PlaylistService()
+search_service = SearchService()
+
+def _set_sort_headers(response: Response, sort: TrackSort, sort_ms: float):
+    # Headers rather than body fields so the list response shape stays unchanged
+    response.headers["X-Sort-Algorithm"] = ALGORITHM_NAMES[sort.algorithm]
+    response.headers["X-Sort-Time-Ms"] = f"{sort_ms:.4f}"
 
 @router.get("/tracks/", response_model=List[TrackResponse], tags=["Tracks"])
-def get_tracks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return track_service.get_tracks(db, skip, limit)
+def get_tracks(response: Response, skip: int = 0, limit: int = 100,
+               filters: TrackFilters = Depends(), sort: TrackSort = Depends(), db: Session = Depends(get_db)):
+    tracks, sort_ms = track_service.get_tracks(db, skip, limit, filters, sort)
+    _set_sort_headers(response, sort, sort_ms)
+    return tracks
 
 @router.get("/tracks/{track_id}", response_model=TrackResponse, tags=["Tracks"])
 def get_track(track_id: int, db: Session = Depends(get_db)):
@@ -31,6 +44,19 @@ def update_track(track_id: int, track: TrackUpdate, db: Session = Depends(get_db
 @router.delete("/tracks/{track_id}", tags=["Tracks"])
 def delete_track(track_id: int, db: Session = Depends(get_db)):
     return track_service.delete_track(db, track_id)
+
+# ==================== SEARCH ENDPOINTS ====================
+
+@router.get("/search/exact", response_model=List[TrackResponse], tags=["Search"])
+def exact_search(response: Response, q: str, field: Literal["any", "title", "artist"] = "any",
+                 filters: TrackFilters = Depends(), sort: TrackSort = Depends(), db: Session = Depends(get_db)):
+    tracks, sort_ms = search_service.exact_search(db, q, field, filters, sort)
+    _set_sort_headers(response, sort, sort_ms)
+    return tracks
+
+@router.get("/search/autocomplete", response_model=AutocompleteResponse, tags=["Search"])
+def autocomplete(q: str, limit: int = Query(8, ge=1, le=50), db: Session = Depends(get_db)):
+    return search_service.autocomplete(db, q, limit)
 
 # ==================== PLAYLISTS ENDPOINTS ====================
 

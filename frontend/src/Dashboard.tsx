@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
     Search, Plus, Bell, Home as HomeIcon, Library as LibraryIcon,
     Sparkles, Play, Edit2, Trash2, Clock, ChevronDown, X,
-    Music, Zap, Activity, ListMusic, ArrowRight, ListPlus, FolderPlus
+    Music, Zap, Activity, ListMusic, ArrowRight, ListPlus, FolderPlus,
+    ArrowUp, ArrowDown, SlidersHorizontal, RotateCcw
 } from "lucide-react";
 
 // --- TYPES ---
@@ -14,12 +15,75 @@ interface Track {
     genre?: string;
     bpm?: number;
     energy?: number;
+    release_year?: number | null;
 }
 
 interface Playlist {
     id: number;
     name: string;
     tracks?: Track[];
+}
+
+type SearchField = "any" | "title" | "artist";
+
+interface AutocompleteResult {
+    query: string;
+    suggestions: Track[];
+    total_matches: number;
+    indexed_tracks: number;
+    trie_ms: number;
+    linear_ms: number;
+}
+
+interface ExactSearch {
+    query: string;
+    field: SearchField;
+}
+
+type SortField = "recent" | "title" | "duration" | "release_year" | "bpm" | "energy";
+type SortAlgorithm = "merge" | "quick";
+
+// Numeric filters are kept as the raw input strings; empty means "no bound"
+interface BrowseOptions {
+    sortBy: SortField;
+    order: "asc" | "desc";
+    algorithm: SortAlgorithm;
+    genre: string;
+    minBpm: string;
+    maxBpm: string;
+    minEnergy: string;
+    maxEnergy: string;
+}
+
+interface SortInfo {
+    algorithm: string;
+    ms: number;
+}
+
+const DEFAULT_BROWSE: BrowseOptions = {
+    sortBy: "recent", order: "desc", algorithm: "merge",
+    genre: "", minBpm: "", maxBpm: "", minEnergy: "", maxEnergy: "",
+};
+
+const SORT_OPTIONS: { value: SortField; label: string }[] = [
+    { value: "recent", label: "Recently Added" },
+    { value: "title", label: "Title" },
+    { value: "duration", label: "Duration" },
+    { value: "release_year", label: "Release Year" },
+    { value: "bpm", label: "BPM" },
+    { value: "energy", label: "Energy" },
+];
+
+function buildBrowseParams(b: BrowseOptions) {
+    const params = new URLSearchParams({ sort_by: b.sortBy, order: b.order, algorithm: b.algorithm });
+    if (b.genre) params.set("genre", b.genre);
+    const bounds: [string, string][] = [
+        ["min_bpm", b.minBpm], ["max_bpm", b.maxBpm], ["min_energy", b.minEnergy], ["max_energy", b.maxEnergy],
+    ];
+    for (const [name, value] of bounds) {
+        if (value.trim()) params.set(name, value.trim());
+    }
+    return params;
 }
 
 // --- COMPONENTS ---
@@ -147,23 +211,104 @@ function Sidebar({
 function Topbar({
                     searchQuery,
                     setSearchQuery,
+                    autocomplete,
+                    onExactSearch,
                     onOpenAddModal
                 }: {
     searchQuery: string;
     setSearchQuery: (q: string) => void;
+    autocomplete: AutocompleteResult | null;
+    onExactSearch: (query: string, field?: SearchField) => void;
     onOpenAddModal: () => void;
 }) {
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [open, setOpen] = useState(false);
+    const [highlighted, setHighlighted] = useState(-1);
+    const suggestions = autocomplete?.suggestions ?? [];
+
+    // ⌘K / Ctrl+K focuses the search box
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                inputRef.current?.focus();
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
+    useEffect(() => setHighlighted(-1), [autocomplete]);
+
+    const pickSuggestion = (track: Track) => {
+        setSearchQuery(track.title);
+        setOpen(false);
+        onExactSearch(track.title, "title");
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setOpen(true);
+            setHighlighted((h) => Math.min(h + 1, suggestions.length - 1));
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHighlighted((h) => Math.max(h - 1, -1));
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (highlighted >= 0 && suggestions[highlighted]) {
+                pickSuggestion(suggestions[highlighted]);
+            } else if (searchQuery.trim()) {
+                setOpen(false);
+                onExactSearch(searchQuery.trim());
+            }
+        } else if (e.key === "Escape") {
+            setOpen(false);
+        }
+    };
+
     return (
         <header className="topbar">
             <div className="search-wrap">
                 <Search size={15} />
                 <input
+                    ref={inputRef}
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Fuzzy search titles, artists, moods..."
+                    onChange={(e) => { setSearchQuery(e.target.value); setOpen(true); }}
+                    onFocus={() => setOpen(true)}
+                    onBlur={() => setOpen(false)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Search titles or artists — Enter for exact match"
                 />
                 <span className="shortcut">⌘K</span>
+
+                {open && searchQuery.trim() && autocomplete && (
+                    <div className="search-suggestions">
+                        {suggestions.length === 0 ? (
+                            <div className="suggestion-empty">No titles or artists start with "{autocomplete.query.trim()}"</div>
+                        ) : (
+                            suggestions.map((track, i) => (
+                                <button
+                                    key={track.id}
+                                    className={`suggestion ${i === highlighted ? "active" : ""}`}
+                                    onMouseDown={(e) => { e.preventDefault(); pickSuggestion(track); }}
+                                    onMouseEnter={() => setHighlighted(i)}
+                                >
+                                    <Music size={13} />
+                                    <span>
+                                        <strong>{track.title}</strong>
+                                        <small>{track.artist}</small>
+                                    </span>
+                                </button>
+                            ))
+                        )}
+                        <div className="suggestion-stats">
+                            <span>{autocomplete.total_matches} matches · {autocomplete.indexed_tracks} tracks indexed</span>
+                            <span>Trie <b>{autocomplete.trie_ms.toFixed(3)} ms</b> · Linear <b>{autocomplete.linear_ms.toFixed(3)} ms</b></span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <button className="icon-button notification">
@@ -271,14 +416,29 @@ function HomeView({
 function Library({
                      tracks,
                      loading,
+                     searchQuery,
+                     onClearSearch,
+                     browse,
+                     onBrowseChange,
+                     genres,
+                     sortInfo,
                      onEditTrack,
                      onDeleteTrack
                  }: {
     tracks: Track[];
     loading: boolean;
+    searchQuery?: string;
+    onClearSearch: () => void;
+    browse: BrowseOptions;
+    onBrowseChange: (changes: Partial<BrowseOptions>) => void;
+    genres: string[];
+    sortInfo: SortInfo | null;
     onEditTrack: (track: Track) => void;
     onDeleteTrack: (id: number) => void;
 }) {
+    const filtersActive = Boolean(browse.genre || browse.minBpm || browse.maxBpm || browse.minEnergy || browse.maxEnergy);
+    const sortLabel = SORT_OPTIONS.find((o) => o.value === browse.sortBy)?.label;
+
     return (
         <div className="content">
             <div className="welcome">
@@ -291,18 +451,83 @@ function Library({
 
             <div className="library-panel">
                 <div className="panel-header">
-                    <div>
-                        <h2>Tracks Database</h2>
-                        <p>All music assets populated from SQLite.</p>
-                    </div>
+                    {searchQuery ? (
+                        <div className="search-banner">
+                            <div>
+                                <h2>Exact matches for "{searchQuery}"</h2>
+                                <p>Case-insensitive lookup on the indexed title and artist columns.</p>
+                            </div>
+                            <button className="secondary-button" onClick={onClearSearch}>
+                                <X size={12} /> Clear search
+                            </button>
+                        </div>
+                    ) : (
+                        <div>
+                            <h2>Tracks Database</h2>
+                            <p>All music assets populated from SQLite.</p>
+                        </div>
+                    )}
                     <div className="sort-control">
                         Sort by:
-                        <select>
-                            <option>Recently Added</option>
-                            <option>Title</option>
-                            <option>BPM</option>
+                        <select
+                            value={browse.sortBy}
+                            onChange={(e) => {
+                                const sortBy = e.target.value as SortField;
+                                onBrowseChange({ sortBy, order: sortBy === "recent" ? "desc" : "asc" });
+                            }}
+                        >
+                            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                         <ChevronDown size={14} />
+                        <button
+                            className="order-toggle"
+                            onClick={() => onBrowseChange({ order: browse.order === "asc" ? "desc" : "asc" })}
+                            title={browse.order === "asc" ? "Ascending" : "Descending"}
+                        >
+                            {browse.order === "asc" ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="filter-bar">
+                    <span className="filter-label"><SlidersHorizontal size={12} /> FILTER</span>
+                    <label>
+                        Genre
+                        <select value={browse.genre} onChange={(e) => onBrowseChange({ genre: e.target.value })}>
+                            <option value="">All genres</option>
+                            {genres.map((g) => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                    </label>
+                    <label>
+                        BPM
+                        <input type="number" min={0} placeholder="min" value={browse.minBpm} onChange={(e) => onBrowseChange({ minBpm: e.target.value })} />
+                        –
+                        <input type="number" min={0} placeholder="max" value={browse.maxBpm} onChange={(e) => onBrowseChange({ maxBpm: e.target.value })} />
+                    </label>
+                    <label>
+                        Energy %
+                        <input type="number" min={0} max={100} placeholder="min" value={browse.minEnergy} onChange={(e) => onBrowseChange({ minEnergy: e.target.value })} />
+                        –
+                        <input type="number" min={0} max={100} placeholder="max" value={browse.maxEnergy} onChange={(e) => onBrowseChange({ maxEnergy: e.target.value })} />
+                    </label>
+                    {filtersActive && (
+                        <button
+                            className="filter-reset"
+                            onClick={() => onBrowseChange({ genre: "", minBpm: "", maxBpm: "", minEnergy: "", maxEnergy: "" })}
+                        >
+                            <RotateCcw size={11} /> Reset
+                        </button>
+                    )}
+                    <div className="algorithm-toggle" title="Sorting algorithm used by the backend">
+                        {(["merge", "quick"] as SortAlgorithm[]).map((alg) => (
+                            <button
+                                key={alg}
+                                className={browse.algorithm === alg ? "active" : ""}
+                                onClick={() => onBrowseChange({ algorithm: alg })}
+                            >
+                                {alg === "merge" ? "MergeSort" : "QuickSort"}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
@@ -310,7 +535,13 @@ function Library({
                     {loading ? (
                         <div style={{ padding: "40px", textAlign: "center", color: "#81768f" }}>Connecting to backend database...</div>
                     ) : tracks.length === 0 ? (
-                        <div style={{ padding: "40px", textAlign: "center", color: "#81768f" }}>No tracks found. Click "Add New Track" to insert data.</div>
+                        <div style={{ padding: "40px", textAlign: "center", color: "#81768f" }}>
+                            {searchQuery
+                                ? `No track title or artist is exactly "${searchQuery}"${filtersActive ? " within these filters" : ""}.`
+                                : filtersActive
+                                    ? "No tracks match these filters."
+                                    : `No tracks found. Click "Add New Track" to insert data.`}
+                        </div>
                     ) : (
                         <table>
                             <thead>
@@ -319,6 +550,7 @@ function Library({
                                 <th>Track</th>
                                 <th>Genre</th>
                                 <th><Clock size={14} className="th-icon" /></th>
+                                <th>Year</th>
                                 <th>BPM</th>
                                 <th>Energy</th>
                                 <th style={{ textAlign: "right" }}>Actions</th>
@@ -349,6 +581,7 @@ function Library({
                                             <span className="genre-pill">{track.genre || "Unassigned"}</span>
                                         </td>
                                         <td className="muted">{track.duration || "3:30"}</td>
+                                        <td className="muted">{track.release_year ?? "—"}</td>
                                         <td className="bpm">{track.bpm || 120}</td>
                                         <td>
                                             <div className="energy-cell">
@@ -373,7 +606,10 @@ function Library({
                 </div>
 
                 <div className="table-footer">
-                    <span>Showing {tracks.length} tracks</span>
+                    <span>
+                        Showing {tracks.length} tracks
+                        {sortInfo && <> · Sorted by {sortLabel} with <b className="sort-stat">{sortInfo.algorithm}</b> in <b className="sort-stat">{sortInfo.ms.toFixed(3)} ms</b></>}
+                    </span>
                     <button><Activity size={12} /> Sync SQLite Database</button>
                 </div>
             </div>
@@ -550,6 +786,7 @@ function AddTrackModal({ isOpen, onClose, onTrackCreated }: { isOpen: boolean; o
     const [duration, setDuration] = useState("3:30");
     const [bpm, setBpm] = useState("120");
     const [energy, setEnergy] = useState("80");
+    const [year, setYear] = useState("");
 
     if (!isOpen) return null;
 
@@ -563,6 +800,7 @@ function AddTrackModal({ isOpen, onClose, onTrackCreated }: { isOpen: boolean; o
                     title, artist, genre, duration,
                     bpm: parseInt(bpm, 10) || 120,
                     energy: (parseFloat(energy) || 80) > 1 ? parseFloat(energy) / 100 : parseFloat(energy),
+                    release_year: parseInt(year, 10) || null,
                 }),
             });
             if (res.ok) {
@@ -606,6 +844,10 @@ function AddTrackModal({ isOpen, onClose, onTrackCreated }: { isOpen: boolean; o
                         <span>ENERGY (1-100)</span>
                         <input type="number" value={energy} onChange={(e) => setEnergy(e.target.value)} placeholder="80" />
                     </label>
+                    <label>
+                        <span>RELEASE YEAR</span>
+                        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} placeholder="2024" />
+                    </label>
 
                     <div className="modal-actions wide">
                         <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
@@ -624,6 +866,7 @@ function EditTrackModal({ isOpen, track, onClose, onTrackUpdated }: { isOpen: bo
     const [duration, setDuration] = useState("3:30");
     const [bpm, setBpm] = useState("120");
     const [energy, setEnergy] = useState("80");
+    const [year, setYear] = useState("");
 
     useEffect(() => {
         if (track) {
@@ -633,6 +876,7 @@ function EditTrackModal({ isOpen, track, onClose, onTrackUpdated }: { isOpen: bo
             setDuration(track.duration || "3:30");
             setBpm(track.bpm ? String(track.bpm) : "120");
             setEnergy(track.energy != null ? String(track.energy <= 1 ? Math.round(track.energy * 100) : track.energy) : "80");
+            setYear(track.release_year != null ? String(track.release_year) : "");
         }
     }, [track]);
 
@@ -648,6 +892,7 @@ function EditTrackModal({ isOpen, track, onClose, onTrackUpdated }: { isOpen: bo
                     title, artist, genre, duration,
                     bpm: parseInt(bpm, 10) || 120,
                     energy: (parseFloat(energy) || 80) > 1 ? parseFloat(energy) / 100 : parseFloat(energy),
+                    release_year: parseInt(year, 10) || null,
                 }),
             });
             if (res.ok) {
@@ -690,6 +935,10 @@ function EditTrackModal({ isOpen, track, onClose, onTrackUpdated }: { isOpen: bo
                     <label>
                         <span>ENERGY (1-100)</span>
                         <input type="number" value={energy} onChange={(e) => setEnergy(e.target.value)} />
+                    </label>
+                    <label>
+                        <span>RELEASE YEAR</span>
+                        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} placeholder="2024" />
                     </label>
 
                     <div className="modal-actions wide">
@@ -806,6 +1055,11 @@ export default function Dashboard() {
     const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [autocomplete, setAutocomplete] = useState<AutocompleteResult | null>(null);
+    const [exactSearch, setExactSearch] = useState<ExactSearch | null>(null);
+    const [browse, setBrowse] = useState<BrowseOptions>(DEFAULT_BROWSE);
+    const [libraryTracks, setLibraryTracks] = useState<Track[] | null>(null);
+    const [sortInfo, setSortInfo] = useState<SortInfo | null>(null);
 
     const [isAddTrackModalOpen, setIsAddTrackModalOpen] = useState(false);
     const [editingTrack, setEditingTrack] = useState<Track | null>(null);
@@ -832,6 +1086,77 @@ export default function Dashboard() {
 
         fetchData();
     }, []);
+
+    // Trie-backed autocomplete, debounced so we don't hit the API on every keystroke
+    useEffect(() => {
+        const q = searchQuery.trim();
+        if (!q) {
+            setAutocomplete(null);
+            setExactSearch(null);
+            return;
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(async () => {
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/search/autocomplete?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+                if (res.ok) setAutocomplete(await res.json());
+            } catch (err) {
+                if ((err as Error).name !== "AbortError") console.error(err);
+            }
+        }, 120);
+
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
+    }, [searchQuery]);
+
+    // Library table: filtered in SQL and sorted by the chosen algorithm on the backend.
+    // Re-runs when the controls change, an exact search starts or ends, or the track list is edited.
+    useEffect(() => {
+        const controller = new AbortController();
+        const timer = setTimeout(async () => {
+            const params = buildBrowseParams(browse);
+            let url = `http://127.0.0.1:8000/tracks/?${params}`;
+            if (exactSearch) {
+                params.set("q", exactSearch.query);
+                params.set("field", exactSearch.field);
+                url = `http://127.0.0.1:8000/search/exact?${params}`;
+            }
+
+            try {
+                const res = await fetch(url, { signal: controller.signal });
+                if (res.ok) {
+                    setLibraryTracks(await res.json());
+                    const algorithm = res.headers.get("X-Sort-Algorithm");
+                    const ms = parseFloat(res.headers.get("X-Sort-Time-Ms") ?? "");
+                    setSortInfo(algorithm && !isNaN(ms) ? { algorithm, ms } : null);
+                }
+            } catch (err) {
+                if ((err as Error).name !== "AbortError") console.error(err);
+            }
+        }, 200);
+
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
+    }, [browse, exactSearch, tracks]);
+
+    const handleExactSearch = (query: string, field: SearchField = "any") => {
+        setExactSearch({ query, field });
+        setView("library");
+    };
+
+    const handleBrowseChange = (changes: Partial<BrowseOptions>) => {
+        setBrowse((prev) => ({ ...prev, ...changes }));
+    };
+
+    const handleClearSearch = () => {
+        setExactSearch(null);
+        setSearchQuery("");
+    };
 
     const handleSelectPlaylist = async (pl: Playlist) => {
         setSelectedPlaylistId(pl.id);
@@ -922,11 +1247,11 @@ export default function Dashboard() {
         } catch (err) { console.error(err); }
     };
 
-    const filteredTracks = tracks.filter((t) =>
-        t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.genre && t.genre.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    const handleTrackUpdated = (updated: Track) => {
+        setTracks((prev) => prev.map((t) => t.id === updated.id ? updated : t));
+    };
+
+    const genres = Array.from(new Set(tracks.map((t) => t.genre).filter((g): g is string => Boolean(g)))).sort();
 
     const activePlaylist = playlists.find((p) => p.id === selectedPlaylistId) || null;
 
@@ -948,6 +1273,8 @@ export default function Dashboard() {
                 <Topbar
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
+                    autocomplete={autocomplete}
+                    onExactSearch={handleExactSearch}
                     onOpenAddModal={() => setIsAddTrackModalOpen(true)}
                 />
 
@@ -964,8 +1291,14 @@ export default function Dashboard() {
 
                 {view === "library" && (
                     <Library
-                        tracks={filteredTracks}
-                        loading={loading}
+                        tracks={libraryTracks ?? []}
+                        loading={loading || libraryTracks === null}
+                        searchQuery={exactSearch?.query}
+                        onClearSearch={handleClearSearch}
+                        browse={browse}
+                        onBrowseChange={handleBrowseChange}
+                        genres={genres}
+                        sortInfo={sortInfo}
                         onEditTrack={(t) => setEditingTrack(t)}
                         onDeleteTrack={handleDeleteTrack}
                     />
@@ -994,7 +1327,7 @@ export default function Dashboard() {
                 isOpen={editingTrack !== null}
                 track={editingTrack}
                 onClose={() => setEditingTrack(null)}
-                onTrackUpdated={(updated) => setTracks((prev) => prev.map((t) => t.id === updated.id ? updated : t))}
+                onTrackUpdated={handleTrackUpdated}
             />
 
             <CreatePlaylistModal

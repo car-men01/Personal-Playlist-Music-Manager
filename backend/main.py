@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.database import engine
+from core.database import engine, apply_migrations
 from models.track import Base
 from models.playlist import Playlist
 from api.router import router
 
 # Create database tables automatically
 Base.metadata.create_all(bind=engine)
+apply_migrations()
 
 app = FastAPI(title="Personal Music Playlist Manager API")
 
@@ -18,6 +19,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Sort-Algorithm", "X-Sort-Time-Ms"],
 )
 
 # Connect the API endpoints
