@@ -5,7 +5,7 @@
 The "Personal Music Playlist Manager" (code-named *Sonora*) is a full-stack web application designed to manage a local music library, organize custom playlists, and discover relationships between tracks. This project emphasizes **computational thinking** by requiring the implementation and analysis of specific algorithms and data structures for searching, sorting, and recommendation systems.
 
 ### Frontend Figma Mockup 
-![alt text](Screenshot 2026-10-16 144122.png)
+![alt text](<Screenshot 2026-10-16 144122.png>)
 
 ---
 
