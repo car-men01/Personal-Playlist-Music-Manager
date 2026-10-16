@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.database import engine
 from models.track import Base
+from models.playlist import Playlist
 from api.router import router
 
 # Create database tables automatically
