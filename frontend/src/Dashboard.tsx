@@ -1,198 +1,1015 @@
-"use client";
-
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-    Search, Plus, Bell, Home, Library as LibraryIcon,
-    Sparkles, MoreHorizontal, Play, Pause, Edit2, Trash2, Clock, ChevronDown
+    Search, Plus, Bell, Home as HomeIcon, Library as LibraryIcon,
+    Sparkles, Play, Edit2, Trash2, Clock, ChevronDown, X,
+    Music, Zap, Activity, ListMusic, ArrowRight, ListPlus, FolderPlus
 } from "lucide-react";
 
-// --- MOCK DATA ---
-const tracks = [
-    { title: "Velvet Skies", artist: "Nova Lane", duration: "3:48", genre: "Dream Pop", bpm: 112, energy: 78, cover: "https://images.unsplash.com/photo-1636690513351-0af1763f6237?auto=format&fit=crop&w=100&q=80" },
-    { title: "Neon Tides", artist: "Kaia Bloom", duration: "4:12", genre: "Alt R&B", bpm: 118, energy: 84, cover: "https://images.unsplash.com/photo-1557264322-b44d383a2906?auto=format&fit=crop&w=100&q=80" },
-    { title: "Afterglow", artist: "Lumen", duration: "3:36", genre: "Electronic", bpm: 124, energy: 92, cover: "https://images.unsplash.com/photo-1549317336-206569e8475c?auto=format&fit=crop&w=100&q=80" },
-];
+// --- TYPES ---
+interface Track {
+    id: number;
+    title: string;
+    artist: string;
+    duration?: string;
+    genre?: string;
+    bpm?: number;
+    energy?: number;
+}
 
-const playlists = [
-    { title: "Midnight Reverie", count: "24 tracks", cover: "https://images.unsplash.com/photo-1609705024873-7add858e3036?auto=format&fit=crop&w=100&q=80" },
-    { title: "Rose Quartz Radio", count: "18 tracks", cover: "https://images.unsplash.com/photo-1603792370945-44f76a08671a?auto=format&fit=crop&w=100&q=80" },
-];
+interface Playlist {
+    id: number;
+    name: string;
+    tracks?: Track[];
+}
 
 // --- COMPONENTS ---
 
-function Sidebar({ view, setView }: { view: string; setView: (v: string) => void }) {
+function SonoraLogo() {
     return (
-        <aside className="w-[250px] shrink-0 h-screen p-6 border-r border-white/10 bg-[#150925]/60 backdrop-blur-xl flex flex-col sticky top-0">
+        <svg className="sonora-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="sonoraGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#00E5FF" />
+                    <stop offset="50%" stopColor="#88F8FF" />
+                    <stop offset="100%" stopColor="#FF77A9" />
+                </linearGradient>
+            </defs>
+            <rect x="3" y="12" width="3.5" height="8" rx="1.75" fill="url(#sonoraGradient)" />
+            <rect x="9.5" y="6" width="3.5" height="20" rx="1.75" fill="url(#sonoraGradient)" />
+            <rect x="16" y="2" width="3.5" height="28" rx="1.75" fill="url(#sonoraGradient)" />
+            <rect x="22.5" y="8" width="3.5" height="16" rx="1.75" fill="url(#sonoraGradient)" />
+            <rect x="29" y="13" width="3.5" height="6" rx="1.75" fill="url(#sonoraGradient)" />
+        </svg>
+    );
+}
+
+function Sidebar({
+                     view,
+                     setView,
+                     playlists,
+                     selectedPlaylistId,
+                     onSelectPlaylist,
+                     onOpenCreatePlaylistModal
+                 }: {
+    view: string;
+    setView: (v: string) => void;
+    playlists: Playlist[];
+    selectedPlaylistId: number | null;
+    onSelectPlaylist: (pl: Playlist) => void;
+    onOpenCreatePlaylistModal: () => void;
+}) {
+    return (
+        <aside className="sidebar">
             {/* Brand */}
-            <div className="flex items-center gap-3 font-bold tracking-[0.2em] text-sm mb-8 px-2 text-white">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00e5ff] to-[#88f8ff] shadow-[0_0_20px_rgba(0,229,255,0.2)] flex items-center justify-center text-[#130921]">
+            <div className="brand">
+                <SonoraLogo />
+                <span className="brand-name">SONORA</span>
+            </div>
+
+            {/* Nav List */}
+            <div className="nav-list">
+                <button
+                    onClick={() => setView("home")}
+                    className={`nav-item ${view === "home" ? "active" : ""}`}
+                >
+                    <HomeIcon size={18} />
+                    <span>Home</span>
+                </button>
+
+                <button
+                    onClick={() => setView("library")}
+                    className={`nav-item ${view === "library" ? "active" : ""}`}
+                >
                     <LibraryIcon size={18} />
+                    <span>My Library</span>
+                </button>
+
+                <button
+                    onClick={() => setView("shuffle")}
+                    className={`nav-item ${view === "shuffle" ? "active" : ""}`}
+                >
+                    <Sparkles size={18} />
+                    <span>DJ Smart Shuffle</span>
+                    <span className="new-pill">NEW</span>
+                </button>
+            </div>
+
+            {/* Playlist Heading */}
+            <div className="playlist-heading">
+                <span>YOUR PLAYLISTS</span>
+                <button onClick={onOpenCreatePlaylistModal} title="Create Playlist">
+                    <Plus size={14} />
+                </button>
+            </div>
+
+            {/* Playlist List */}
+            <div className="playlist-list">
+                {playlists.length > 0 ? (
+                    playlists.map((pl) => (
+                        <button
+                            key={pl.id}
+                            onClick={() => onSelectPlaylist(pl)}
+                            className={`playlist-item ${view === "playlist" && selectedPlaylistId === pl.id ? "active" : ""}`}
+                        >
+                            <div className="pl-icon">{pl.name.charAt(0).toUpperCase()}</div>
+                            <span>
+                <strong>{pl.name}</strong>
+                <small>{pl.tracks?.length || 0} tracks</small>
+              </span>
+                        </button>
+                    ))
+                ) : (
+                    <small style={{ padding: "0 10px", color: "#6f6682" }}>No playlists created yet.</small>
+                )}
+            </div>
+
+            {/* Sidebar Bottom */}
+            <div className="sidebar-bottom">
+                <div className="storage-label">
+                    <span>LIBRARY CAPACITY</span>
+                    <span>68%</span>
                 </div>
-                SONORA
-            </div>
-
-            {/* Navigation */}
-            <nav className="flex flex-col gap-1 mb-8">
-                {[
-                    { id: "home", label: "Home", icon: Home },
-                    { id: "library", label: "My Library", icon: LibraryIcon },
-                    { id: "shuffle", label: "DJ Smart Shuffle", icon: Sparkles, badge: "NEW" },
-                ].map((item) => (
-                    <button
-                        key={item.id}
-                        onClick={() => setView(item.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all relative ${
-                            view === item.id
-                                ? "text-[#00e5ff] bg-gradient-to-r from-[#00e5ff]/10 to-transparent"
-                                : "text-[#9e94b4] hover:text-white hover:bg-white/5"
-                        }`}
-                    >
-                        {view === item.id && <div className="absolute left-0 w-[2px] h-5 bg-[#00e5ff] shadow-[0_0_10px_#00e5ff] rounded-full" />}
-                        <item.icon size={18} />
-                        <span>{item.label}</span>
-                        {item.badge && <span className="ml-auto text-[9px] font-bold tracking-wider text-[#ff9bc0] bg-[#ff77a9]/10 px-1.5 py-0.5 rounded">{item.badge}</span>}
-                    </button>
-                ))}
-            </nav>
-
-            {/* Playlists */}
-            <div className="flex items-center justify-between text-[#6f6682] text-[10px] font-bold tracking-widest mb-3 px-2">
-                YOUR PLAYLISTS
-                <Plus size={14} className="cursor-pointer hover:text-white" />
-            </div>
-            <div className="flex flex-col gap-1 flex-1 overflow-y-auto">
-                {playlists.map((pl) => (
-                    <button key={pl.title} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-left transition-colors">
-                        <img src={pl.cover} alt="" className="w-9 h-9 rounded-md object-cover" />
-                        <div className="flex flex-col min-w-0">
-                            <span className="text-xs font-medium text-[#d8d2e4] truncate">{pl.title}</span>
-                            <span className="text-[10px] text-[#6f6682]">{pl.count}</span>
-                        </div>
-                    </button>
-                ))}
+                <div className="storage-track">
+                    <span />
+                </div>
+                <button className="profile">
+                    <div className="avatar">AL</div>
+                    <span>
+            <strong>Alex Mercer</strong>
+            <small>Pro Account</small>
+          </span>
+                </button>
             </div>
         </aside>
     );
 }
 
-function Topbar() {
+function Topbar({
+                    searchQuery,
+                    setSearchQuery,
+                    onOpenAddModal
+                }: {
+    searchQuery: string;
+    setSearchQuery: (q: string) => void;
+    onOpenAddModal: () => void;
+}) {
     return (
-        <header className="h-[76px] px-8 flex items-center gap-4 border-b border-white/5 bg-[#150a25]/40 backdrop-blur-md sticky top-0 z-20">
-            <div className="flex-1 max-w-[560px] h-10 rounded-xl border border-white/10 bg-white/5 flex items-center px-4 text-[#81768f] focus-within:border-[#00e5ff]/50 focus-within:ring-2 focus-within:ring-[#00e5ff]/10 transition-all">
-                <Search size={16} />
+        <header className="topbar">
+            <div className="search-wrap">
+                <Search size={15} />
                 <input
                     type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Fuzzy search titles, artists, moods..."
-                    className="bg-transparent border-none outline-none flex-1 text-xs text-[#eee9f7] ml-3 placeholder:text-[#71677e]"
                 />
-                <span className="text-[10px] border border-white/10 px-1.5 py-0.5 rounded text-[#81768f]">⌘K</span>
+                <span className="shortcut">⌘K</span>
             </div>
 
-            <button className="ml-auto w-10 h-10 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center text-[#a99fb8] hover:text-white transition relative">
+            <button className="icon-button notification">
                 <Bell size={18} />
-                <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-[#ff77a9] rounded-full shadow-[0_0_8px_#ff77a9]"></span>
+                <i />
             </button>
 
-            <button className="h-10 px-4 rounded-xl bg-gradient-to-br from-[#00e5ff] to-[#78f3ff] text-[#09191e] text-xs font-bold flex items-center gap-2 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,229,255,0.2)] transition-all">
+            <button className="primary-button" onClick={onOpenAddModal}>
                 <Plus size={16} /> Add New Track
             </button>
         </header>
     );
 }
 
-function Library() {
+function HomeView({
+                      tracks,
+                      playlists,
+                      onOpenAddModal,
+                      onOpenCreatePlaylistModal,
+                      setView,
+                      onSelectPlaylist
+                  }: {
+    tracks: Track[];
+    playlists: Playlist[];
+    onOpenAddModal: () => void;
+    onOpenCreatePlaylistModal: () => void;
+    setView: (v: string) => void;
+    onSelectPlaylist: (pl: Playlist) => void;
+}) {
+    const totalTracks = tracks.length;
+    const totalPlaylists = playlists.length;
+
+    const avgBpm = totalTracks
+        ? Math.round(tracks.reduce((sum, t) => sum + (t.bpm || 120), 0) / totalTracks)
+        : 0;
+
+    const avgEnergy = totalTracks
+        ? Math.round(
+            tracks.reduce((sum, t) => {
+                const val = t.energy != null ? (t.energy <= 1 ? t.energy * 100 : t.energy) : 50;
+                return sum + val;
+            }, 0) / totalTracks
+        )
+        : 0;
+
     return (
-        <main className="p-8 max-w-[1200px] mx-auto">
-            <div className="mb-8">
-                <p className="text-[#00e5ff] text-[10px] font-bold tracking-[0.2em] mb-2 uppercase">Your Private Collection</p>
-                <h1 className="text-4xl font-light text-white mb-2">Good evening, Alex.</h1>
-                <p className="text-[#9389a5] text-sm">Your soundtrack, beautifully organized. <span className="text-[#ff8db6]">126 tracks</span> across your library.</p>
+        <div className="content">
+            <div className="welcome">
+                <div>
+                    <p className="eyebrow"><Sparkles size={12} /> Sound Control Center</p>
+                    <h1>Good evening, Alex.</h1>
+                    <p>Your soundtrack, beautifully organized. <span>{totalTracks} tracks</span> across your database.</p>
+                </div>
+
+                <div className="stat-card">
+                    <span><Zap size={18} /></span>
+                    <div>
+                        <small>AUDIO PROFILE</small>
+                        <strong>{avgEnergy}% Avg Energy</strong>
+                        <em>{avgBpm} BPM Average Pace</em>
+                    </div>
+                </div>
             </div>
 
-            {/* Glassmorphism Table Container */}
-            <div className="border border-white/10 rounded-2xl bg-gradient-to-br from-[#331a46]/60 to-[#180d2a]/60 shadow-2xl overflow-hidden backdrop-blur-xl">
-                <div className="p-5 border-b border-white/5 flex justify-between items-center">
+            <div className="library-panel">
+                <div className="panel-header">
                     <div>
-                        <h2 className="text-lg font-medium text-white mb-1">My Library</h2>
-                        <p className="text-xs text-[#796f89]">Curate and shape your personal sound.</p>
+                        <h2>Dashboard Overview</h2>
+                        <p>Quick shortcuts to your library and custom collections.</p>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-[#766c86] bg-white/5 border border-white/10 rounded-lg px-3 py-2 cursor-pointer hover:bg-white/10 transition">
-                        Sort by: Recently Added <ChevronDown size={14} />
+                    <div style={{ display: "flex", gap: "10px" }}>
+                        <button className="primary-button" onClick={() => setView("library")}>
+                            View All Tracks <ArrowRight size={14} />
+                        </button>
+                        <button className="primary-button" style={{ background: "rgba(255,119,169,0.15)", color: "#ff77a9", border: "1px solid rgba(255,119,169,0.3)" }} onClick={onOpenCreatePlaylistModal}>
+                            <FolderPlus size={14} /> New Playlist
+                        </button>
                     </div>
                 </div>
 
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                    <tr className="text-[10px] text-[#D0C2EC] tracking-wider uppercase border-b border-white/5">
-                        <th className="py-4 px-6 font-semibold w-12 text-center">#</th>
-                        <th className="py-4 px-4 font-semibold">Track</th>
-                        <th className="py-4 px-4 font-semibold">Genre</th>
-                        <th className="py-4 px-4 font-semibold"><Clock size={14} /></th>
-                        <th className="py-4 px-4 font-semibold">BPM</th>
-                        <th className="py-4 px-4 font-semibold">Energy</th>
-                        <th className="py-4 px-4"></th>
-                    </tr>
-                    </thead>
-                    <tbody className="text-xs text-[#c4bccf]">
-                    {tracks.map((track, i) => (
-                        <tr key={track.title} className="border-b border-white/5 hover:bg-white/5 transition-colors group">
-                            <td className="py-3 px-4 flex items-center gap-3">
-                                <div className="w-10 h-10 relative rounded-md overflow-hidden shrink-0">
-                                    <img src={track.cover} alt={track.title} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
-                                        <Play size={16} className="text-white fill-white" />
-                                    </div>
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="font-semibold text-white text-sm">{track.title}</span>
-                                    <span className="text-[#D0C2EC] text-xs">{track.artist}</span>
-                                </div>
-                            </td>
-                            <td className="py-3 px-4">
-                  <span className="text-[10px] text-[#D0C2EC] bg-[#b969b4]/20 border border-[#ff77a9]/30 px-2.5 py-1 rounded-full whitespace-nowrap">
-                    {track.genre}
-                  </span>
-                            </td>
-                            <td className="py-3 px-4 text-[#D0C2EC]">{track.duration}</td>
-                            <td className="py-3 px-4 text-white font-medium">{track.bpm}</td>
-                            <td className="py-3 px-4">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-16 h-1 rounded-full bg-white/10 overflow-hidden">
-                                        <div className="h-full bg-gradient-to-r from-[#00e5ff] to-[#ff77a9]" style={{ width: `${track.energy}%` }}></div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td className="py-3 px-4">
-                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button className="p-1.5 text-[#91869f] hover:text-[#00e5ff] transition"><Edit2 size={16} /></button>
-                                    <button className="p-1.5 text-[#91869f] hover:text-[#ff77a9] transition"><Trash2 size={16} /></button>
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
-                    </tbody>
-                </table>
+                <div style={{ padding: "20px" }}>
+                    <h3 style={{ fontSize: "12px", color: "#81768f", marginBottom: "12px" }}>YOUR ACTIVE PLAYLISTS ({totalPlaylists})</h3>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
+                        {playlists.map((pl) => (
+                            <button
+                                key={pl.id}
+                                onClick={() => onSelectPlaylist(pl)}
+                                className="playlist-item"
+                                style={{ background: "rgba(255,255,255,0.03)", padding: "12px", border: "1px solid rgba(255,255,255,0.06)" }}
+                            >
+                                <div className="pl-icon">{pl.name.charAt(0).toUpperCase()}</div>
+                                <span>
+                  <strong>{pl.name}</strong>
+                  <small>{pl.tracks?.length || 0} tracks inside</small>
+                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
-        </main>
+        </div>
     );
 }
 
-export default function App() {
-    const [view, setView] = useState("library");
+function Library({
+                     tracks,
+                     loading,
+                     onEditTrack,
+                     onDeleteTrack
+                 }: {
+    tracks: Track[];
+    loading: boolean;
+    onEditTrack: (track: Track) => void;
+    onDeleteTrack: (id: number) => void;
+}) {
+    return (
+        <div className="content">
+            <div className="welcome">
+                <div>
+                    <p className="eyebrow">Your Private Collection</p>
+                    <h1>My Track Library</h1>
+                    <p>Curate and shape your personal sound. <span>{tracks.length} tracks</span> loaded.</p>
+                </div>
+            </div>
+
+            <div className="library-panel">
+                <div className="panel-header">
+                    <div>
+                        <h2>Tracks Database</h2>
+                        <p>All music assets populated from SQLite.</p>
+                    </div>
+                    <div className="sort-control">
+                        Sort by:
+                        <select>
+                            <option>Recently Added</option>
+                            <option>Title</option>
+                            <option>BPM</option>
+                        </select>
+                        <ChevronDown size={14} />
+                    </div>
+                </div>
+
+                <div className="table-wrap">
+                    {loading ? (
+                        <div style={{ padding: "40px", textAlign: "center", color: "#81768f" }}>Connecting to backend database...</div>
+                    ) : tracks.length === 0 ? (
+                        <div style={{ padding: "40px", textAlign: "center", color: "#81768f" }}>No tracks found. Click "Add New Track" to insert data.</div>
+                    ) : (
+                        <table>
+                            <thead>
+                            <tr>
+                                <th className="index-cell">#</th>
+                                <th>Track</th>
+                                <th>Genre</th>
+                                <th><Clock size={14} className="th-icon" /></th>
+                                <th>BPM</th>
+                                <th>Energy</th>
+                                <th style={{ textAlign: "right" }}>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {tracks.map((track, i) => {
+                                const energyPct = track.energy != null
+                                    ? track.energy <= 1 ? track.energy * 100 : track.energy
+                                    : 50;
+
+                                return (
+                                    <tr key={track.id}>
+                                        <td className="index-cell">{String(i + 1).padStart(2, '0')}</td>
+                                        <td>
+                                            <div className="track-cell">
+                                                <div className="cover-wrap">
+                                                    <Play size={16} />
+                                                    <button title="Play"><Play size={14} /></button>
+                                                </div>
+                                                <span>
+                            <strong>{track.title}</strong>
+                            <small>{track.artist}</small>
+                          </span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className="genre-pill">{track.genre || "Unassigned"}</span>
+                                        </td>
+                                        <td className="muted">{track.duration || "3:30"}</td>
+                                        <td className="bpm">{track.bpm || 120}</td>
+                                        <td>
+                                            <div className="energy-cell">
+                                                <div className="energy-track">
+                                                    <span style={{ width: `${Math.min(100, Math.max(0, energyPct))}%` }} />
+                                                </div>
+                                                <small>{Math.round(energyPct)}%</small>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="actions">
+                                                <button onClick={() => onEditTrack(track)} title="Edit"><Edit2 size={15} /></button>
+                                                <button onClick={() => onDeleteTrack(track.id)} title="Delete"><Trash2 size={15} /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+
+                <div className="table-footer">
+                    <span>Showing {tracks.length} tracks</span>
+                    <button><Activity size={12} /> Sync SQLite Database</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function PlaylistView({
+                          playlist,
+                          onOpenAddTracksModal,
+                          onRenamePlaylist,
+                          onDeletePlaylist,
+                          onRemoveTrackFromPlaylist
+                      }: {
+    playlist: Playlist;
+    onOpenAddTracksModal: () => void;
+    onRenamePlaylist: (playlist: Playlist) => void;
+    onDeletePlaylist: (id: number) => void;
+    onRemoveTrackFromPlaylist: (playlistId: number, trackId: number) => void;
+}) {
+    const tracks = playlist.tracks || [];
 
     return (
-        <div className="min-h-screen flex relative overflow-hidden bg-[#0F051D] text-[#f6f2ff] font-sans selection:bg-[#00e5ff]/30">
-            {/* Background Ambient Glows */}
-            <div className="absolute top-[20%] right-[-10%] w-[500px] h-[500px] bg-[#00e5ff] rounded-full mix-blend-screen filter blur-[150px] opacity-10 pointer-events-none"></div>
-            <div className="absolute bottom-[-10%] left-[20%] w-[400px] h-[400px] bg-[#ff77a9] rounded-full mix-blend-screen filter blur-[150px] opacity-[0.15] pointer-events-none"></div>
+        <div className="content">
+            <div className="welcome">
+                <div>
+                    <p className="eyebrow" style={{ color: "#ff77a9" }}>PLAYLIST COLLECTION</p>
+                    <h1>{playlist.name}</h1>
+                    <p>Curated sound list • <span>{tracks.length} tracks</span></p>
+                </div>
 
-            <Sidebar view={view} setView={setView} />
-
-            <div className="flex-1 flex flex-col h-screen overflow-y-auto relative z-10">
-                <Topbar />
-                {view === "library" && <Library />}
-                {view === "shuffle" && <div className="p-8 text-center text-[#9e94b4] mt-20">DJ Smart Shuffle View Coming Soon...</div>}
+                <div style={{ display: "flex", gap: "10px" }}>
+                    <button className="primary-button" onClick={onOpenAddTracksModal}>
+                        <ListPlus size={16} /> Add Tracks
+                    </button>
+                    <button className="secondary-button" onClick={() => onRenamePlaylist(playlist)}>
+                        <Edit2 size={14} /> Rename
+                    </button>
+                    <button className="delete-button" onClick={() => onDeletePlaylist(playlist.id)}>
+                        <Trash2 size={14} /> Delete
+                    </button>
+                </div>
             </div>
+
+            <div className="library-panel">
+                <div className="table-wrap">
+                    {tracks.length === 0 ? (
+                        <div style={{ padding: "50px", textAlign: "center", color: "#81768f" }}>
+                            Playlist is empty. Click <strong>Add Tracks</strong> to include songs from your database.
+                        </div>
+                    ) : (
+                        <table>
+                            <thead>
+                            <tr>
+                                <th className="index-cell">#</th>
+                                <th>Track</th>
+                                <th>Genre</th>
+                                <th>Duration</th>
+                                <th>BPM</th>
+                                <th>Energy</th>
+                                <th style={{ textAlign: "right" }}>Remove</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {tracks.map((track, i) => (
+                                <tr key={track.id}>
+                                    <td className="index-cell">{String(i + 1).padStart(2, '0')}</td>
+                                    <td>
+                                        <div className="track-cell">
+                                            <div className="cover-wrap"><Play size={16} /></div>
+                                            <span>
+                          <strong>{track.title}</strong>
+                          <small>{track.artist}</small>
+                        </span>
+                                        </div>
+                                    </td>
+                                    <td><span className="genre-pill">{track.genre || "Unassigned"}</span></td>
+                                    <td className="muted">{track.duration || "3:30"}</td>
+                                    <td className="bpm">{track.bpm || 120}</td>
+                                    <td><small>{(track.energy || 0.5) * 100}%</small></td>
+                                    <td style={{ textAlign: "right" }}>
+                                        <button onClick={() => onRemoveTrackFromPlaylist(playlist.id, track.id)} style={{ border: 0, background: "none", color: "#ff77a9", cursor: "pointer" }}>
+                                            <Trash2 size={15} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function SmartShuffleView({ tracks }: { tracks: Track[] }) {
+    const flowTracks = tracks.slice(0, 6);
+
+    return (
+        <div className="content shuffle-content">
+            <div className="shuffle-hero">
+                <div>
+                    <p className="eyebrow"><Sparkles size={12} /> AI HARMONIC ENGINE</p>
+                    <h1>DJ Smart <em>Shuffle Flow</em></h1>
+                    <p>Analyzes BPM, harmonic key, and dynamic energy curves across your SQLite track database to construct seamless algorithmic transitions.</p>
+                </div>
+                <button className="primary-button glow-button">
+                    <Sparkles size={16} /> Regenerate Flow
+                </button>
+            </div>
+
+            <div className="flow-panel">
+                <div className="flow-header">
+                    <div><i className="live-dot" /> LIVE WAVE HARMONICS GENERATOR</div>
+                    <span>6 TRACK BLEND</span>
+                </div>
+
+                <div className="flow-canvas">
+                    <div className="flow-grid">
+                        {flowTracks.map((track, index) => (
+                            <div key={track.id} className="flow-card">
+                                <p className="flow-number">0{index + 1} // MATCH {98 - index * 2}%</p>
+                                <div className="flow-cover">
+                                    <div style={{ width: "100%", height: "100%", background: "#1c0d33", borderRadius: "10px", display: "grid", placeItems: "center" }}>
+                                        <Music size={28} color="#00e5ff" />
+                                    </div>
+                                    <button><Play size={14} /></button>
+                                </div>
+                                <div className="flow-info">
+                                    <strong>{track.title}</strong>
+                                    <span>{track.artist}</span>
+                                    <div className="mini-viz">
+                                        <span><i style={{ width: `${(track.bpm || 120) / 1.8}%` }} /></span>
+                                        <span><i style={{ width: `${(track.energy || 0.8) * 100}%` }} /></span>
+                                    </div>
+                                    <small><b>{track.bpm || 120} BPM</b><i></i><span>{track.genre || "Pop"}</span></small>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flow-legend">
+                    <span><i className="cyan" /> BPM TEMPO ACCELERATION</span>
+                    <span><i className="pink" /> DYNAMIC ENERGY WAVE</span>
+                    <p>Harmonic Match algorithm configured for minimal dynamic variance.</p>
+                </div>
+            </div>
+
+            <div className="insight-row">
+                <div>
+                    <div className="insight-icon"><Activity size={18} /></div>
+                    <p>
+                        <strong>Algorithmic Harmony Score</strong>
+                        <small>Optimal energy curve detected with zero harmonic key clashes across queue.</small>
+                    </p>
+                </div>
+                <div className="score-ring">
+                    <span>96<small>%</small></span>
+                    <em>MATCH RATING</em>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- MODALS ---
+
+function AddTrackModal({ isOpen, onClose, onTrackCreated }: { isOpen: boolean; onClose: () => void; onTrackCreated: (t: Track) => void }) {
+    const [title, setTitle] = useState("");
+    const [artist, setArtist] = useState("");
+    const [genre, setGenre] = useState("");
+    const [duration, setDuration] = useState("3:30");
+    const [bpm, setBpm] = useState("120");
+    const [energy, setEnergy] = useState("80");
+
+    if (!isOpen) return null;
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const res = await fetch("http://127.0.0.1:8000/tracks/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title, artist, genre, duration,
+                    bpm: parseInt(bpm, 10) || 120,
+                    energy: (parseFloat(energy) || 80) > 1 ? parseFloat(energy) / 100 : parseFloat(energy),
+                }),
+            });
+            if (res.ok) {
+                const created = await res.json();
+                onTrackCreated(created);
+                onClose();
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    return (
+        <div className="modal-backdrop">
+            <div className="modal-card">
+                <div className="modal-top">
+                    <h2>Add New Track</h2>
+                    <button onClick={onClose} style={{ border: 0, background: "none", color: "#81768f", cursor: "pointer" }}><X size={20} /></button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="form-grid">
+                    <label className="wide">
+                        <span>TRACK TITLE *</span>
+                        <input required type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Velvet Skies" />
+                    </label>
+                    <label className="wide">
+                        <span>ARTIST NAME *</span>
+                        <input required type="text" value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="Nova Lane" />
+                    </label>
+                    <label>
+                        <span>GENRE</span>
+                        <input type="text" value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="Dream Pop" />
+                    </label>
+                    <label>
+                        <span>DURATION</span>
+                        <input type="text" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="3:48" />
+                    </label>
+                    <label>
+                        <span>BPM</span>
+                        <input type="number" value={bpm} onChange={(e) => setBpm(e.target.value)} placeholder="120" />
+                    </label>
+                    <label>
+                        <span>ENERGY (1-100)</span>
+                        <input type="number" value={energy} onChange={(e) => setEnergy(e.target.value)} placeholder="80" />
+                    </label>
+
+                    <div className="modal-actions wide">
+                        <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+                        <button type="submit" className="primary-button">Save Track</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function EditTrackModal({ isOpen, track, onClose, onTrackUpdated }: { isOpen: boolean; track: Track | null; onClose: () => void; onTrackUpdated: (t: Track) => void }) {
+    const [title, setTitle] = useState("");
+    const [artist, setArtist] = useState("");
+    const [genre, setGenre] = useState("");
+    const [duration, setDuration] = useState("3:30");
+    const [bpm, setBpm] = useState("120");
+    const [energy, setEnergy] = useState("80");
+
+    useEffect(() => {
+        if (track) {
+            setTitle(track.title || "");
+            setArtist(track.artist || "");
+            setGenre(track.genre || "");
+            setDuration(track.duration || "3:30");
+            setBpm(track.bpm ? String(track.bpm) : "120");
+            setEnergy(track.energy != null ? String(track.energy <= 1 ? Math.round(track.energy * 100) : track.energy) : "80");
+        }
+    }, [track]);
+
+    if (!isOpen || !track) return null;
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/tracks/${track.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title, artist, genre, duration,
+                    bpm: parseInt(bpm, 10) || 120,
+                    energy: (parseFloat(energy) || 80) > 1 ? parseFloat(energy) / 100 : parseFloat(energy),
+                }),
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                onTrackUpdated(updated);
+                onClose();
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    return (
+        <div className="modal-backdrop">
+            <div className="modal-card">
+                <div className="modal-top">
+                    <h2>Edit Track Details</h2>
+                    <button onClick={onClose} style={{ border: 0, background: "none", color: "#81768f", cursor: "pointer" }}><X size={20} /></button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="form-grid">
+                    <label className="wide">
+                        <span>TRACK TITLE</span>
+                        <input required type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </label>
+                    <label className="wide">
+                        <span>ARTIST</span>
+                        <input required type="text" value={artist} onChange={(e) => setArtist(e.target.value)} />
+                    </label>
+                    <label>
+                        <span>GENRE</span>
+                        <input type="text" value={genre} onChange={(e) => setGenre(e.target.value)} />
+                    </label>
+                    <label>
+                        <span>DURATION</span>
+                        <input type="text" value={duration} onChange={(e) => setDuration(e.target.value)} />
+                    </label>
+                    <label>
+                        <span>BPM</span>
+                        <input type="number" value={bpm} onChange={(e) => setBpm(e.target.value)} />
+                    </label>
+                    <label>
+                        <span>ENERGY (1-100)</span>
+                        <input type="number" value={energy} onChange={(e) => setEnergy(e.target.value)} />
+                    </label>
+
+                    <div className="modal-actions wide">
+                        <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+                        <button type="submit" className="primary-button">Update Track</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function CreatePlaylistModal({ isOpen, onClose, onPlaylistCreated }: { isOpen: boolean; onClose: () => void; onPlaylistCreated: (p: Playlist) => void }) {
+    const [name, setName] = useState("");
+
+    if (!isOpen) return null;
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const res = await fetch("http://127.0.0.1:8000/playlists/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name }),
+            });
+            if (res.ok) {
+                const created = await res.json();
+                onPlaylistCreated(created);
+                setName("");
+                onClose();
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    return (
+        <div className="modal-backdrop">
+            <div className="modal-card" style={{ maxWidth: "400px" }}>
+                <div className="modal-top">
+                    <h2>Create Playlist</h2>
+                    <button onClick={onClose} style={{ border: 0, background: "none", color: "#81768f", cursor: "pointer" }}><X size={20} /></button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="form-grid">
+                    <label className="wide">
+                        <span>PLAYLIST NAME</span>
+                        <input required type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Synthwave Selection" />
+                    </label>
+
+                    <div className="modal-actions wide">
+                        <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+                        <button type="submit" className="primary-button">Create</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function AddTracksToPlaylistModal({ isOpen, playlist, allTracks, onClose, onTrackAdded }: { isOpen: boolean; playlist: Playlist | null; allTracks: Track[]; onClose: () => void; onTrackAdded: (pId: number, t: Track) => void }) {
+    if (!isOpen || !playlist) return null;
+
+    const currentIds = new Set((playlist.tracks || []).map((t) => t.id));
+    const available = allTracks.filter((t) => !currentIds.has(t.id));
+
+    const handleAdd = async (track: Track) => {
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/playlists/${playlist.id}/tracks/${track.id}`, { method: "POST" });
+            if (res.ok) {
+                onTrackAdded(playlist.id, track);
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    return (
+        <div className="modal-backdrop">
+            <div className="modal-card">
+                <div className="modal-top">
+                    <h2>Add Tracks to "{playlist.name}"</h2>
+                    <button onClick={onClose} style={{ border: 0, background: "none", color: "#81768f", cursor: "pointer" }}><X size={20} /></button>
+                </div>
+
+                <div style={{ display: "grid", gap: "10px", maxHeight: "300px", overflowY: "auto" }}>
+                    {available.length > 0 ? (
+                        available.map((track) => (
+                            <div key={track.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
+                                <div>
+                                    <strong style={{ display: "block", fontSize: "11px", color: "#fff" }}>{track.title}</strong>
+                                    <small style={{ color: "#81768f", fontSize: "9px" }}>{track.artist}</small>
+                                </div>
+                                <button className="primary-button" style={{ height: "30px", fontSize: "9px" }} onClick={() => handleAdd(track)}>
+                                    <Plus size={12} /> Add
+                                </button>
+                            </div>
+                        ))
+                    ) : (
+                        <p style={{ color: "#81768f", textAlign: "center", padding: "20px" }}>All database tracks are in this playlist.</p>
+                    )}
+                </div>
+
+                <div className="modal-actions">
+                    <button className="primary-button" onClick={onClose}>Done</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- MAIN DASHBOARD APP ---
+
+export default function Dashboard() {
+    const [view, setView] = useState("home");
+    const [tracks, setTracks] = useState<Track[]>([]);
+    const [playlists, setPlaylists] = useState<Playlist[]>([]);
+    const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const [isAddTrackModalOpen, setIsAddTrackModalOpen] = useState(false);
+    const [editingTrack, setEditingTrack] = useState<Track | null>(null);
+    const [isCreatePlaylistModalOpen, setIsCreatePlaylistModalOpen] = useState(false);
+    const [isAddTracksToPlaylistModalOpen, setIsAddTracksToPlaylistModalOpen] = useState(false);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const [tracksRes, playlistsRes] = await Promise.all([
+                    fetch("http://127.0.0.1:8000/tracks/"),
+                    fetch("http://127.0.0.1:8000/playlists/")
+                ]);
+
+                if (tracksRes.ok) setTracks(await tracksRes.json());
+                if (playlistsRes.ok) setPlaylists(await playlistsRes.json());
+            } catch (err) {
+                console.error("Fetch error:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    const handleSelectPlaylist = async (pl: Playlist) => {
+        setSelectedPlaylistId(pl.id);
+        setView("playlist");
+
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/playlists/${pl.id}`);
+            if (res.ok) {
+                const fresh = await res.json();
+                setPlaylists((prev) => prev.map((p) => p.id === pl.id ? fresh : p));
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    const handlePlaylistCreated = (newPl: Playlist) => {
+        setPlaylists((prev) => [...prev, { ...newPl, tracks: [] }]);
+        handleSelectPlaylist(newPl);
+    };
+
+    const handleRenamePlaylist = async (playlist: Playlist) => {
+        const newName = prompt("New playlist name:", playlist.name);
+        if (!newName) return;
+
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/playlists/${playlist.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newName }),
+            });
+
+            if (res.ok) {
+                const updated = await res.json();
+                setPlaylists((prev) => prev.map((p) => p.id === playlist.id ? { ...p, name: updated.name } : p));
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    const handleDeletePlaylist = async (id: number) => {
+        if (!confirm("Delete playlist?")) return;
+
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/playlists/${id}`, { method: "DELETE" });
+            if (res.ok) {
+                setPlaylists((prev) => prev.filter((p) => p.id !== id));
+                if (selectedPlaylistId === id) {
+                    setSelectedPlaylistId(null);
+                    setView("home");
+                }
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    const handleTrackAddedToPlaylist = (pId: number, track: Track) => {
+        setPlaylists((prev) => prev.map((p) => {
+            if (p.id === pId) {
+                return { ...p, tracks: [...(p.tracks || []), track] };
+            }
+            return p;
+        }));
+    };
+
+    const handleRemoveTrackFromPlaylist = async (pId: number, trackId: number) => {
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/playlists/${pId}/tracks/${trackId}`, { method: "DELETE" });
+            if (res.ok) {
+                setPlaylists((prev) => prev.map((p) => {
+                    if (p.id === pId) {
+                        return { ...p, tracks: (p.tracks || []).filter((t) => t.id !== trackId) };
+                    }
+                    return p;
+                }));
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    const handleDeleteTrack = async (id: number) => {
+        if (!confirm("Delete track from library?")) return;
+
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/tracks/${id}`, { method: "DELETE" });
+            if (res.ok) {
+                setTracks((prev) => prev.filter((t) => t.id !== id));
+                setPlaylists((prev) => prev.map((p) => ({
+                    ...p,
+                    tracks: (p.tracks || []).filter((t) => t.id !== id)
+                })));
+            }
+        } catch (err) { console.error(err); }
+    };
+
+    const filteredTracks = tracks.filter((t) =>
+        t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.genre && t.genre.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
+    const activePlaylist = playlists.find((p) => p.id === selectedPlaylistId) || null;
+
+    return (
+        <div className="app-shell">
+            <div className="ambient ambient-one" />
+            <div className="ambient ambient-two" />
+
+            <Sidebar
+                view={view}
+                setView={setView}
+                playlists={playlists}
+                selectedPlaylistId={selectedPlaylistId}
+                onSelectPlaylist={handleSelectPlaylist}
+                onOpenCreatePlaylistModal={() => setIsCreatePlaylistModalOpen(true)}
+            />
+
+            <div className="main-column">
+                <Topbar
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    onOpenAddModal={() => setIsAddTrackModalOpen(true)}
+                />
+
+                {view === "home" && (
+                    <HomeView
+                        tracks={tracks}
+                        playlists={playlists}
+                        onOpenAddModal={() => setIsAddTrackModalOpen(true)}
+                        onOpenCreatePlaylistModal={() => setIsCreatePlaylistModalOpen(true)}
+                        setView={setView}
+                        onSelectPlaylist={handleSelectPlaylist}
+                    />
+                )}
+
+                {view === "library" && (
+                    <Library
+                        tracks={filteredTracks}
+                        loading={loading}
+                        onEditTrack={(t) => setEditingTrack(t)}
+                        onDeleteTrack={handleDeleteTrack}
+                    />
+                )}
+
+                {view === "playlist" && activePlaylist && (
+                    <PlaylistView
+                        playlist={activePlaylist}
+                        onOpenAddTracksModal={() => setIsAddTracksToPlaylistModalOpen(true)}
+                        onRenamePlaylist={handleRenamePlaylist}
+                        onDeletePlaylist={handleDeletePlaylist}
+                        onRemoveTrackFromPlaylist={handleRemoveTrackFromPlaylist}
+                    />
+                )}
+
+                {view === "shuffle" && <SmartShuffleView tracks={tracks} />}
+            </div>
+
+            <AddTrackModal
+                isOpen={isAddTrackModalOpen}
+                onClose={() => setIsAddTrackModalOpen(false)}
+                onTrackCreated={(t) => setTracks((prev) => [...prev, t])}
+            />
+
+            <EditTrackModal
+                isOpen={editingTrack !== null}
+                track={editingTrack}
+                onClose={() => setEditingTrack(null)}
+                onTrackUpdated={(updated) => setTracks((prev) => prev.map((t) => t.id === updated.id ? updated : t))}
+            />
+
+            <CreatePlaylistModal
+                isOpen={isCreatePlaylistModalOpen}
+                onClose={() => setIsCreatePlaylistModalOpen(false)}
+                onPlaylistCreated={handlePlaylistCreated}
+            />
+
+            <AddTracksToPlaylistModal
+                isOpen={isAddTracksToPlaylistModalOpen}
+                playlist={activePlaylist}
+                allTracks={tracks}
+                onClose={() => setIsAddTracksToPlaylistModalOpen(false)}
+                onTrackAdded={handleTrackAddedToPlaylist}
+            />
         </div>
     );
 }
