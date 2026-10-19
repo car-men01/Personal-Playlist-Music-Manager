@@ -141,16 +141,11 @@ The frontend ended up as **React + TypeScript (Vite) with Tailwind**, not plain 
 * **Start-up migrations:** `apply_migrations()` in `core/database.py` updates databases created by older versions of the app. It adds new columns and indexes, and is safe to run on every start.
 
 ### Iteration 2: Searching ✅
-Use the search box in the top bar (focus it with **Ctrl/⌘+K**).
+Use the search box in the top bar (focus it with **Ctrl/⌘+K**). Clearing the box shows the full library again.
 
-* **Autocomplete as you type** (`GET /search/autocomplete?q=`). This uses a **Trie (prefix tree)** that indexes every title and artist, plus each word inside them, so `sk` finds *Velvet Skies*. The Trie is built from the database the first time someone searches. After that it is updated whenever a track is created, edited or deleted. Every request also runs a **brute-force linear scan** on the same data, and the dropdown shows both timings.
-* **Exact search** on Enter (`GET /search/exact?q=&field=any|title|artist`). This uses case-insensitive **B-tree indexes** on `title` and `artist`, so a lookup is O(log n) instead of a full table scan. SQLite's query plan confirms the index is used: `SEARCH tracks USING INDEX ix_tracks_title_nocase`.
-
-| Structure | Lookup cost |
-|---|---|
-| Trie | O(p + m): prefix length + size of the matching subtree, independent of library size |
-| Linear scan | O(N · T · p): every token of every track |
-| B-tree index | O(log n) |
+* **Autocomplete as you type** (`GET /search/autocomplete?q=&limit=8`). This is a simple case-insensitive substring search in SQL (`title LIKE '%text%' OR artist LIKE '%text%'`), so `glow` finds *Afterglow* and `lumen` finds tracks by *Lumen*. Titles that start with the text are listed first. `%` and `_` are escaped, so they are matched as normal characters rather than wildcards. Pick a suggestion with the mouse or ↑/↓ + Enter.
+* **Exact search** on Enter (`GET /search/exact?q=&field=any|title|artist`). This uses case-insensitive **B-tree indexes** on `title` and `artist`, so a lookup is O(log n) instead of an O(n) full table scan. SQLite's query plan confirms the index is used: `SEARCH tracks USING INDEX ix_tracks_title_nocase`. Results can also be filtered and sorted with the Library controls.
+* **Complexity:** a `LIKE '%text%'` pattern cannot use an index, because the match can start anywhere in the string. So the autocomplete is an O(n) scan of the table, which is fine for a personal library. The requirements' Trie option was built and then replaced, by choice, with this simpler approach.
 
 ### Iteration 2: Sorting & Filtering ✅
 Use the **Sort by** dropdown, the ↑/↓ toggle and the filter bar on **My Library**.
@@ -175,22 +170,20 @@ Each script generates synthetic data and checks its results against a reference 
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m benchmarks.search_benchmark    # Trie vs linear, index vs full scan
+.\.venv\Scripts\python.exe -m benchmarks.search_benchmark    # indexed exact search vs full table scan
 .\.venv\Scripts\python.exe -m benchmarks.sort_benchmark      # MergeSort vs QuickSort vs Timsort
 .\.venv\Scripts\python.exe -m benchmarks.shuffle_benchmark   # greedy vs random shuffle
 ```
 
 Each script also accepts custom sizes, e.g. `-m benchmarks.sort_benchmark 10000 200000`. Sample results from one development machine (absolute times will vary):
 
-**Prefix search, 50,000 tracks.** The linear scan costs the same whatever you type. The Trie gets faster with every character, because fewer tracks match:
+**Exact search.** The indexed lookup stays flat as the library grows. The full scan grows linearly:
 
-| Prefix length | Avg matches | Trie | Linear | Speed-up |
-|---|---|---|---|---|
-| 1 | 10,691 | 6.3 ms | 23.0 ms | 3.6× |
-| 3 | 1,559 | 0.84 ms | 24.3 ms | 29× |
-| 4 | 405 | 0.17 ms | 24.9 ms | 146× |
-
-**Exact search, 50,000 tracks:** about 0.005 ms with the index against 3.6 ms for a full scan (about 670×). The indexed time stays flat as the library grows.
+| Tracks | Indexed | Full scan | Speed-up |
+|---|---|---|---|
+| 1,000 | 0.0022 ms | 0.056 ms | 26× |
+| 10,000 | 0.0025 ms | 0.54 ms | 221× |
+| 50,000 | 0.0035 ms | 2.66 ms | 767× |
 
 **Sorting.** Runtime divided by n·log₂n stays roughly constant over a 100× increase in n, which is the practical evidence of O(n log n):
 
@@ -217,7 +210,6 @@ On already-sorted and reverse-sorted input QuickSort is unaffected, thanks to th
 | `run.ps1` | One-command setup and launch script |
 | `backend/main.py` | FastAPI app, CORS, start-up migrations |
 | `backend/api/router.py` | All HTTP endpoints |
-| `backend/services/search_algorithms.py` | Trie, tokeniser, linear prefix search |
 | `backend/services/sorting_algorithms.py` | MergeSort, QuickSort, track sort keys |
 | `backend/services/shuffle_algorithms.py` | Feature scaling, distance, greedy nearest-neighbour flow |
 | `backend/services/*_service.py` | Business logic connecting the algorithms to the database |

@@ -26,15 +26,6 @@ interface Playlist {
 
 type SearchField = "any" | "title" | "artist";
 
-interface AutocompleteResult {
-    query: string;
-    suggestions: Track[];
-    total_matches: number;
-    indexed_tracks: number;
-    trie_ms: number;
-    linear_ms: number;
-}
-
 interface ExactSearch {
     query: string;
     field: SearchField;
@@ -211,20 +202,20 @@ function Sidebar({
 function Topbar({
                     searchQuery,
                     setSearchQuery,
-                    autocomplete,
+                    suggestions,
                     onExactSearch,
                     onOpenAddModal
                 }: {
     searchQuery: string;
     setSearchQuery: (q: string) => void;
-    autocomplete: AutocompleteResult | null;
+    suggestions: Track[] | null;
     onExactSearch: (query: string, field?: SearchField) => void;
     onOpenAddModal: () => void;
 }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [open, setOpen] = useState(false);
     const [highlighted, setHighlighted] = useState(-1);
-    const suggestions = autocomplete?.suggestions ?? [];
+    const items = suggestions ?? [];
 
     // ⌘K / Ctrl+K focuses the search box
     useEffect(() => {
@@ -238,7 +229,7 @@ function Topbar({
         return () => window.removeEventListener("keydown", onKey);
     }, []);
 
-    useEffect(() => setHighlighted(-1), [autocomplete]);
+    useEffect(() => setHighlighted(-1), [suggestions]);
 
     const pickSuggestion = (track: Track) => {
         setSearchQuery(track.title);
@@ -250,14 +241,14 @@ function Topbar({
         if (e.key === "ArrowDown") {
             e.preventDefault();
             setOpen(true);
-            setHighlighted((h) => Math.min(h + 1, suggestions.length - 1));
+            setHighlighted((h) => Math.min(h + 1, items.length - 1));
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
             setHighlighted((h) => Math.max(h - 1, -1));
         } else if (e.key === "Enter") {
             e.preventDefault();
-            if (highlighted >= 0 && suggestions[highlighted]) {
-                pickSuggestion(suggestions[highlighted]);
+            if (highlighted >= 0 && items[highlighted]) {
+                pickSuggestion(items[highlighted]);
             } else if (searchQuery.trim()) {
                 setOpen(false);
                 onExactSearch(searchQuery.trim());
@@ -283,12 +274,12 @@ function Topbar({
                 />
                 <span className="shortcut">⌘K</span>
 
-                {open && searchQuery.trim() && autocomplete && (
+                {open && searchQuery.trim() && suggestions && (
                     <div className="search-suggestions">
-                        {suggestions.length === 0 ? (
-                            <div className="suggestion-empty">No titles or artists start with "{autocomplete.query.trim()}"</div>
+                        {items.length === 0 ? (
+                            <div className="suggestion-empty">No titles or artists contain "{searchQuery.trim()}"</div>
                         ) : (
-                            suggestions.map((track, i) => (
+                            items.map((track, i) => (
                                 <button
                                     key={track.id}
                                     className={`suggestion ${i === highlighted ? "active" : ""}`}
@@ -303,10 +294,6 @@ function Topbar({
                                 </button>
                             ))
                         )}
-                        <div className="suggestion-stats">
-                            <span>{autocomplete.total_matches} matches · {autocomplete.indexed_tracks} tracks indexed</span>
-                            <span>Trie <b>{autocomplete.trie_ms.toFixed(3)} ms</b> · Linear <b>{autocomplete.linear_ms.toFixed(3)} ms</b></span>
-                        </div>
                     </div>
                 )}
             </div>
@@ -1163,7 +1150,7 @@ export default function Dashboard() {
     const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
-    const [autocomplete, setAutocomplete] = useState<AutocompleteResult | null>(null);
+    const [suggestions, setSuggestions] = useState<Track[] | null>(null);
     const [exactSearch, setExactSearch] = useState<ExactSearch | null>(null);
     const [browse, setBrowse] = useState<BrowseOptions>(DEFAULT_BROWSE);
     const [libraryTracks, setLibraryTracks] = useState<Track[] | null>(null);
@@ -1195,11 +1182,12 @@ export default function Dashboard() {
         fetchData();
     }, []);
 
-    // Trie-backed autocomplete, debounced so we don't hit the API on every keystroke
+    // Autocomplete suggestions, debounced so we don't hit the API on every keystroke.
+    // Emptying the search box also returns the library to the full track list.
     useEffect(() => {
         const q = searchQuery.trim();
         if (!q) {
-            setAutocomplete(null);
+            setSuggestions(null);
             setExactSearch(null);
             return;
         }
@@ -1208,11 +1196,11 @@ export default function Dashboard() {
         const timer = setTimeout(async () => {
             try {
                 const res = await fetch(`http://127.0.0.1:8000/search/autocomplete?q=${encodeURIComponent(q)}`, { signal: controller.signal });
-                if (res.ok) setAutocomplete(await res.json());
+                if (res.ok) setSuggestions(await res.json());
             } catch (err) {
                 if ((err as Error).name !== "AbortError") console.error(err);
             }
-        }, 120);
+        }, 150);
 
         return () => {
             clearTimeout(timer);
@@ -1381,7 +1369,7 @@ export default function Dashboard() {
                 <Topbar
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
-                    autocomplete={autocomplete}
+                    suggestions={suggestions}
                     onExactSearch={handleExactSearch}
                     onOpenAddModal={() => setIsAddTrackModalOpen(true)}
                 />

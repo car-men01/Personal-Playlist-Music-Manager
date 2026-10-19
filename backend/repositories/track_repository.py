@@ -34,8 +34,17 @@ class TrackRepository:
     def get_by_id(self, db: Session, track_id: int):
         return db.query(Track).filter(Track.id == track_id).first()
 
-    def get_by_ids(self, db: Session, track_ids):
-        return db.query(Track).filter(Track.id.in_(track_ids)).all()
+    def find_containing(self, db: Session, text: str, limit: int):
+        # Case-insensitive substring match on title or artist (SQLite's LIKE ignores ASCII case).
+        # Escape LIKE wildcards so a typed "%" or "_" is matched literally.
+        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        starts_with = Track.title.ilike(f"{escaped}%", escape="\\")
+        return (db.query(Track)
+                .filter(or_(Track.title.ilike(pattern, escape="\\"), Track.artist.ilike(pattern, escape="\\")))
+                .order_by(case((starts_with, 0), else_=1), Track.title)  # titles starting with the text first
+                .limit(limit)
+                .all())
 
     def find_exact(self, db: Session, query: str, field: str, filters: TrackFilters):
         # COLLATE NOCASE matches the indexes created in core/database.py, so SQLite

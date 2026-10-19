@@ -3,7 +3,6 @@ from fastapi import HTTPException
 from repositories.track_repository import TrackRepository
 from schemas.browse import TrackFilters, TrackSort
 from schemas.track import TrackCreate, TrackUpdate
-from services.search_service import search_index
 from services.sorting_algorithms import sort_tracks
 
 class TrackService:
@@ -26,18 +25,13 @@ class TrackService:
         return track
 
     def create_track(self, db: Session, track: TrackCreate):
-        created = self.repository.create(db, track)
-        search_index.upsert(created)
-        return created
+        return self.repository.create(db, track)
 
     def update_track(self, db: Session, track_id: int, track_update: TrackUpdate):
         db_track = self.get_track(db, track_id)
-        updated = self.repository.update(db, db_track, track_update)
-        search_index.upsert(updated)
-        return updated
+        return self.repository.update(db, db_track, track_update)
 
     def delete_track(self, db: Session, track_id: int):
         db_track = self.get_track(db, track_id)
         self.repository.delete(db, db_track)
-        search_index.remove(track_id)
         return {"message": "Track deleted successfully"}
