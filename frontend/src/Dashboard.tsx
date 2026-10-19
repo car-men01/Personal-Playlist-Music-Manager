@@ -706,57 +706,160 @@ function PlaylistView({
     );
 }
 
-function SmartShuffleView({ tracks }: { tracks: Track[] }) {
-    const flowTracks = tracks.slice(0, 6);
+interface FlowStep {
+    track: Track;
+    match: number | null;
+    bpm_change: number | null;
+    energy_change: number | null;
+}
+
+interface SmartShuffleResult {
+    steps: FlowStep[];
+    harmony_score: number;
+    random_baseline: number;
+    skipped_tracks: number;
+    elapsed_ms: number;
+}
+
+const energyPercent = (energy?: number) => energy == null ? 50 : energy <= 1 ? energy * 100 : energy;
+const signed = (n: number) => n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : "±0";
+
+function SmartShuffleView({ tracks, playlists }: { tracks: Track[]; playlists: Playlist[] }) {
+    const [source, setSource] = useState("library");   // "library" or a playlist id
+    const [startId, setStartId] = useState("");        // "" = random start
+    const [regenerateCount, setRegenerateCount] = useState(0);
+    const [flow, setFlow] = useState<SmartShuffleResult | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const lastStartRef = useRef<number | null>(null);
+
+    const sourceTracks = source === "library"
+        ? tracks
+        : playlists.find((p) => String(p.id) === source)?.tracks ?? [];
+
+    useEffect(() => {
+        const controller = new AbortController();
+        const params = new URLSearchParams();
+        if (source !== "library") params.set("playlist_id", source);
+        if (startId) params.set("start_track_id", startId);
+        else if (lastStartRef.current !== null) params.set("previous_start_id", String(lastStartRef.current));
+
+        (async () => {
+            setLoading(true);
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/shuffle/smart?${params}`, { signal: controller.signal });
+                const data = await res.json();
+                if (res.ok) {
+                    setFlow(data);
+                    setError(null);
+                    lastStartRef.current = data.steps[0]?.track.id ?? null;
+                } else {
+                    setError(data.detail ?? "Could not generate a flow.");
+                }
+            } catch (err) {
+                if ((err as Error).name !== "AbortError") setError("Could not reach the backend.");
+            } finally {
+                if (!controller.signal.aborted) setLoading(false);
+            }
+        })();
+
+        return () => controller.abort();
+    }, [source, startId, regenerateCount, tracks]);
+
+    const steps = flow?.steps ?? [];
+    const transitions = Math.max(0, steps.length - 1);
 
     return (
         <div className="content shuffle-content">
             <div className="shuffle-hero">
                 <div>
-                    <p className="eyebrow"><Sparkles size={12} /> AI HARMONIC ENGINE</p>
+                    <p className="eyebrow"><Sparkles size={12} /> GREEDY GRAPH TRAVERSAL</p>
                     <h1>DJ Smart <em>Shuffle Flow</em></h1>
-                    <p>Analyzes BPM, harmonic key, and dynamic energy curves across your SQLite track database to construct seamless algorithmic transitions.</p>
+                    <p>Treats every track as a point in BPM and energy space, then chains each song to its nearest unplayed neighbour — so every transition is the smoothest one available.</p>
                 </div>
-                <button className="primary-button glow-button">
-                    <Sparkles size={16} /> Regenerate Flow
-                </button>
+                <div className="shuffle-controls">
+                    <label>
+                        <span>SOURCE</span>
+                        <select value={source} onChange={(e) => { setSource(e.target.value); setStartId(""); }}>
+                            <option value="library">Entire library</option>
+                            {playlists.map((p) => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                        </select>
+                    </label>
+                    <label>
+                        <span>START FROM</span>
+                        <select value={startId} onChange={(e) => setStartId(e.target.value)}>
+                            <option value="">Surprise me</option>
+                            {sourceTracks.map((t) => <option key={t.id} value={String(t.id)}>{t.title}</option>)}
+                        </select>
+                    </label>
+                    <button
+                        className="primary-button glow-button"
+                        onClick={() => { setStartId(""); setRegenerateCount((c) => c + 1); }}
+                        disabled={loading}
+                    >
+                        <Sparkles size={16} /> Regenerate Flow
+                    </button>
+                </div>
             </div>
 
             <div className="flow-panel">
                 <div className="flow-header">
-                    <div><i className="live-dot" /> LIVE WAVE HARMONICS GENERATOR</div>
-                    <span>6 TRACK BLEND</span>
+                    <div><i className="live-dot" /> NEAREST-NEIGHBOUR FLOW</div>
+                    <span>{loading && !flow ? "GENERATING…" : `${steps.length} TRACK BLEND`}</span>
                 </div>
 
                 <div className="flow-canvas">
-                    <div className="flow-grid">
-                        {flowTracks.map((track, index) => (
-                            <div key={track.id} className="flow-card">
-                                <p className="flow-number">0{index + 1} // MATCH {98 - index * 2}%</p>
-                                <div className="flow-cover">
-                                    <div style={{ width: "100%", height: "100%", background: "#1c0d33", borderRadius: "10px", display: "grid", placeItems: "center" }}>
-                                        <Music size={28} color="#00e5ff" />
+                    {error ? (
+                        <div className="flow-empty">{error}</div>
+                    ) : flow && steps.length < 2 ? (
+                        <div className="flow-empty">
+                            Add at least two tracks with a BPM and energy value to build a flow.
+                            {flow.skipped_tracks > 0 && ` ${flow.skipped_tracks} track(s) were skipped for missing values.`}
+                        </div>
+                    ) : (
+                        <div className={`flow-grid ${loading ? "is-loading" : ""}`}>
+                            {steps.map((step, index) => {
+                                const { track } = step;
+                                const quality = step.match == null ? "" : step.match >= 85 ? "smooth" : step.match < 60 ? "jump" : "";
+                                return (
+                                    <div key={track.id} className="flow-card">
+                                        <p className="flow-number">
+                                            {String(index + 1).padStart(2, "0")} // {step.match == null ? "START" : `MATCH ${Math.round(step.match)}%`}
+                                        </p>
+                                        <div className="flow-cover">
+                                            <div style={{ width: "100%", height: "100%", background: "#1c0d33", borderRadius: "10px", display: "grid", placeItems: "center" }}>
+                                                <Music size={28} color="#00e5ff" />
+                                            </div>
+                                            <button><Play size={14} /></button>
+                                        </div>
+                                        <div className="flow-info">
+                                            <strong>{track.title}</strong>
+                                            <span>{track.artist}</span>
+                                            <div className="mini-viz">
+                                                <span><i style={{ width: `${Math.min(100, (track.bpm ?? 0) / 1.8)}%` }} /></span>
+                                                <span><i style={{ width: `${Math.min(100, energyPercent(track.energy))}%` }} /></span>
+                                            </div>
+                                            <small><b>{track.bpm} BPM</b><i></i><span>{Math.round(energyPercent(track.energy))}% energy</span></small>
+                                            {step.bpm_change != null && step.energy_change != null && (
+                                                <em className={`flow-delta ${quality}`}>
+                                                    {signed(step.bpm_change)} BPM · {signed(Math.round(step.energy_change))}% energy
+                                                </em>
+                                            )}
+                                        </div>
                                     </div>
-                                    <button><Play size={14} /></button>
-                                </div>
-                                <div className="flow-info">
-                                    <strong>{track.title}</strong>
-                                    <span>{track.artist}</span>
-                                    <div className="mini-viz">
-                                        <span><i style={{ width: `${(track.bpm || 120) / 1.8}%` }} /></span>
-                                        <span><i style={{ width: `${(track.energy || 0.8) * 100}%` }} /></span>
-                                    </div>
-                                    <small><b>{track.bpm || 120} BPM</b><i></i><span>{track.genre || "Pop"}</span></small>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 <div className="flow-legend">
-                    <span><i className="cyan" /> BPM TEMPO ACCELERATION</span>
-                    <span><i className="pink" /> DYNAMIC ENERGY WAVE</span>
-                    <p>Harmonic Match algorithm configured for minimal dynamic variance.</p>
+                    <span><i className="cyan" /> BPM TEMPO</span>
+                    <span><i className="pink" /> ENERGY</span>
+                    <p>
+                        Distance = √(ΔBPM² + Δenergy²) on normalised values
+                        {flow && steps.length > 1 && ` · computed in ${flow.elapsed_ms.toFixed(3)} ms`}
+                    </p>
                 </div>
             </div>
 
@@ -765,11 +868,16 @@ function SmartShuffleView({ tracks }: { tracks: Track[] }) {
                     <div className="insight-icon"><Activity size={18} /></div>
                     <p>
                         <strong>Algorithmic Harmony Score</strong>
-                        <small>Optimal energy curve detected with zero harmonic key clashes across queue.</small>
+                        <small>
+                            {flow && transitions > 0
+                                ? `Average match across ${transitions} transition${transitions === 1 ? "" : "s"}. A random shuffle of the same tracks would average ${Math.round(flow.random_baseline)}%.`
+                                : "Generate a flow to score its transitions."}
+                            {flow && flow.skipped_tracks > 0 && ` ${flow.skipped_tracks} track(s) without BPM or energy were left out.`}
+                        </small>
                     </p>
                 </div>
                 <div className="score-ring">
-                    <span>96<small>%</small></span>
+                    <span>{flow && transitions > 0 ? Math.round(flow.harmony_score) : "–"}<small>%</small></span>
                     <em>MATCH RATING</em>
                 </div>
             </div>
@@ -1314,7 +1422,7 @@ export default function Dashboard() {
                     />
                 )}
 
-                {view === "shuffle" && <SmartShuffleView tracks={tracks} />}
+                {view === "shuffle" && <SmartShuffleView tracks={tracks} playlists={playlists} />}
             </div>
 
             <AddTrackModal

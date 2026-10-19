@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from core.database import get_db
 from schemas.track import TrackResponse, TrackCreate, TrackUpdate
@@ -11,11 +11,14 @@ from schemas.search import AutocompleteResponse
 from services.search_service import SearchService
 from schemas.browse import TrackFilters, TrackSort
 from services.sorting_algorithms import ALGORITHM_NAMES
+from schemas.shuffle import SmartShuffleResponse
+from services.shuffle_service import ShuffleService
 
 router = APIRouter()
 track_service = TrackService()
 playlist_service = PlaylistService()
 search_service = SearchService()
+shuffle_service = ShuffleService()
 
 def _set_sort_headers(response: Response, sort: TrackSort, sort_ms: float):
     # Headers rather than body fields so the list response shape stays unchanged
@@ -87,3 +90,9 @@ def add_track_to_playlist(playlist_id: int, track_id: int, db: Session = Depends
 @router.delete("/playlists/{playlist_id}/tracks/{track_id}", response_model=PlaylistResponse, tags=["Playlists"])
 def remove_track_from_playlist(playlist_id: int, track_id: int, db: Session = Depends(get_db)):
     return playlist_service.remove_track_from_playlist(db, playlist_id, track_id)
+# ==================== SMART SHUFFLE ENDPOINTS ====================
+
+@router.get("/shuffle/smart", response_model=SmartShuffleResponse, tags=["Smart Shuffle"])
+def smart_shuffle(playlist_id: Optional[int] = None, start_track_id: Optional[int] = None,
+                  previous_start_id: Optional[int] = None, db: Session = Depends(get_db)):
+    return shuffle_service.smart_shuffle(db, playlist_id, start_track_id, previous_start_id)

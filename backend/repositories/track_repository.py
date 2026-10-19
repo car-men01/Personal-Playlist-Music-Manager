@@ -11,6 +11,9 @@ class TrackRepository:
     def get_all(self, db: Session, skip: int = 0, limit: int = 100):
         return db.query(Track).offset(skip).limit(limit).all()
 
+    def list_all(self, db: Session):
+        return db.query(Track).all()
+
     def get_filtered(self, db: Session, filters: TrackFilters):
         return self.apply_filters(db.query(Track), filters).all()
 

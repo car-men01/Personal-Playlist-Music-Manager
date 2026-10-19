@@ -167,6 +167,19 @@ tr:hover .actions { opacity: 1; }
 .shuffle-hero h1 em { font-style: normal; color: #ff8cb6; }
 .shuffle-hero > div > p:last-child { max-width: 560px; color: #8e839f; font-size: 11px; line-height: 1.7; }
 .glow-button { min-width: 210px; box-shadow: 0 0 35px rgba(0,229,255,.18); }
+.glow-button:disabled { opacity: .6; cursor: progress; transform: none; }
+.shuffle-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.shuffle-controls label { display: flex; flex-direction: column; gap: 6px; }
+.shuffle-controls label > span { color: #6f6682; font-size: 8px; font-weight: 700; letter-spacing: .14em; }
+.shuffle-controls select { height: 40px; min-width: 150px; max-width: 200px; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; background: rgba(255,255,255,.035); color: #d1c9dc; font-size: 10px; padding: 0 10px; outline: 0; }
+.shuffle-controls select:focus { border-color: rgba(0,229,255,.45); }
+.shuffle-controls select option { background: #1c0d33; }
+
+.flow-grid.is-loading { opacity: .45; transition: opacity .2s; }
+.flow-empty { min-height: 360px; display: grid; place-items: center; text-align: center; color: #81768f; font-size: 11px; }
+.flow-delta { margin-top: 6px; font-style: normal; font-size: 7px; color: #a99eb7; white-space: nowrap; }
+.flow-delta.smooth { color: #00e5ff; }
+.flow-delta.jump { color: #ff87b1; }
 
 .flow-panel { padding: 0; }
 .flow-header { height: 47px; padding: 0 19px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 8px; color: #82778f; letter-spacing: .14em; }
