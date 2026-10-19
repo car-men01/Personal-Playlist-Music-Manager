@@ -1,0 +1,44 @@
+# --- Dependencies ---
+node_modules/
+.venv/
+venv/
+env/
+
+# --- Python build artifacts & caches ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Frontend build output & caches ---
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# --- Local databases (recreate with: python core/seed.py) ---
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Logs ---
+*.log
+npm-debug.log*
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.swp
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini

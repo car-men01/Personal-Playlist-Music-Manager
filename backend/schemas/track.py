@@ -8,6 +8,7 @@ class TrackBase(BaseModel):
     genre: Optional[str] = None
     bpm: Optional[int] = None
     energy: Optional[float] = None
+    release_year: Optional[int] = None
 
 class TrackCreate(TrackBase):
     pass
