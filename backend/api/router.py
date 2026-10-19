@@ -7,7 +7,6 @@ from schemas.track import TrackResponse, TrackCreate, TrackUpdate
 from services.track_service import TrackService
 from schemas.playlist import PlaylistResponse, PlaylistCreate, PlaylistUpdate
 from services.playlist_service import PlaylistService
-from schemas.search import AutocompleteResponse
 from services.search_service import SearchService
 from schemas.browse import TrackFilters, TrackSort
 from services.sorting_algorithms import ALGORITHM_NAMES
@@ -57,7 +56,7 @@ def exact_search(response: Response, q: str, field: Literal["any", "title", "art
     _set_sort_headers(response, sort, sort_ms)
     return tracks
 
-@router.get("/search/autocomplete", response_model=AutocompleteResponse, tags=["Search"])
+@router.get("/search/autocomplete", response_model=List[TrackResponse], tags=["Search"])
 def autocomplete(q: str, limit: int = Query(8, ge=1, le=50), db: Session = Depends(get_db)):
     return search_service.autocomplete(db, q, limit)
 
